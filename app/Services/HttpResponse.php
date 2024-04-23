@@ -6,7 +6,6 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 
 trait HttpResponse
 {
-
     public function success(array $data, int $status = 200, $noWrap = false, $headers = [])
     {
         return response()->json(

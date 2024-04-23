@@ -6,7 +6,6 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Chapter extends Model
 {
@@ -16,6 +15,10 @@ class Chapter extends Model
         'manga_id',
         'number',
         'title',
+    ];
+
+    protected $casts = [
+        'number' => 'float',
     ];
 
     public function manga(): BelongsTo
@@ -30,10 +33,5 @@ class Chapter extends Model
             ->withPivot([
                 'page_id'
             ]);
-    }
-
-    public function pages(): HasMany
-    {
-        return $this->hasMany(Page::class);
     }
 }

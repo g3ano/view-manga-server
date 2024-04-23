@@ -179,10 +179,9 @@ class MangaController extends Controller
         $limit = $request->query('limit') ?? 25;
 
         $manga = Manga::where('slug', $slug)->first();
-        $chapters = Chapter::with('teams')->where('manga_id', $manga->id)
-            // ->orderBy('created_at')
-            ->get();
-        // ->paginate($limit, ['*'], 'page', $page);
+        $chapters = Chapter::with('teams', 'manga')->where('manga_id', $manga->id)
+            ->orderBy('number', 'desc')
+            ->paginate($limit, ['*'], 'page', $page);
 
         $chapters = $chapters->map(function ($model, $key) {
             /**
@@ -195,5 +194,9 @@ class MangaController extends Controller
         })->all();
 
         return new ChapterCollection($chapters);
+    }
+
+    public function latet()
+    {
     }
 }

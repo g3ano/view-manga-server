@@ -29,6 +29,10 @@ class Team extends Model
         'discord'
     ];
 
+    protected $casts = [
+        'is_pending' => 'integer',
+    ];
+
     public function members(): BelongsToMany
     {
         return $this->belongsToMany(User::class)
@@ -36,7 +40,8 @@ class Team extends Model
             ->withPivot([
                 'is_leader',
                 'is_pending',
-            ]);
+            ])
+            ->using(TeamUser::class);
     }
 
     public function mangas(): HasMany

@@ -4,7 +4,6 @@ use App\Http\Controllers\v1\TeamController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('teams')->group(function () {
-
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/', [TeamController::class, 'store']);
 
@@ -20,7 +19,6 @@ Route::prefix('teams')->group(function () {
 
     Route::get('/', [TeamController::class, 'index']);
     Route::get('/{slug}', [TeamController::class, 'show']);
-    Route::get('/search', [TeamController::class, 'search']);
     Route::get('/{slug}/mangas', [TeamController::class, 'getTeamMangas']);
     Route::get('/{slug}/mangas/unapproved', [
         TeamController::class, 'getTeamUnapprovedMangas'

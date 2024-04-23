@@ -13,6 +13,7 @@ Route::prefix('mangas')->group(function () {
     });
 
     Route::get('/', [MangaController::class, 'index']);
+    Route::get('/latest', [MangaController::class, 'latest']);
     Route::get('/{slug}/team', [MangaController::class, 'getMangaTeam']);
     Route::get('/{slug}/chapters', [MangaController::class, 'getMangaChapters']);
     Route::get('/{slug}', [MangaController::class, 'show']);

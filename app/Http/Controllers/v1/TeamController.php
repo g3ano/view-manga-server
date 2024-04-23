@@ -36,17 +36,6 @@ class TeamController extends Controller
         return new TeamCollection($teams);
     }
 
-    public function search(Request $request)
-    {
-        $querySearch = $request->query('query');
-        $page = $request->query('page') ?? 1;
-
-        $teams = Team::where('name', 'LIKE', '%' . $querySearch . '%')
-            ->paginate(10, ['*'], 'page', $page);
-
-        return new TeamCollection($teams);
-    }
-
     public function store(StoreTeamRequest $request)
     {
         /**
@@ -54,9 +43,15 @@ class TeamController extends Controller
          */
         $user = Auth::user();
 
-        if (!$user || $user->cant('viewUnapprovedMangaTeam', Team::class)) {
+        if (!$user) {
             $this->failure([
-                'message' => 'Team limit have been reached, enable to create new team',
+                'message' => __('user.unauthenticated'),
+            ]);
+        }
+
+        if ($user->cant('create', Team::class)) {
+            $this->failure([
+                'message' => __('team.limit'),
             ]);
         }
         $data = $request->validated();
@@ -71,7 +66,7 @@ class TeamController extends Controller
 
         if (!$team) {
             $this->failure([
-                'message' => 'Failed to create the team',
+                'message' => __('team.failed.create'),
             ]);
         }
 
@@ -99,25 +94,24 @@ class TeamController extends Controller
             ->first();
 
         if (!$team) {
-            $this->success([
-                'team' => [],
-            ]);
+            $this->success(['team' => [], ]);
         }
         if ($user) {
             foreach ($team->members as $teamMember) {
                 if ($teamMember->slug === $user->slug) {
-                    $casted = (int) $teamMember->pivot->is_pending;
-                    if ($casted !== Team::MEMBER_REFUSED && $casted !== Team::MEMBER_PENDING) {
+                    if (
+                        $teamMember->pivot->is_pending !== Team::MEMBER_REFUSED && $teamMember->pivot->is_pending !== Team::MEMBER_PENDING
+                    ) {
                         $team->isMember = true;
 
                         if ($teamMember->pivot->is_leader) {
                             $team->isLeader = true;
                         }
                     }
-                    if ($casted === Team::MEMBER_REFUSED) {
+                    if ($teamMember->pivot->is_pending === Team::MEMBER_REFUSED) {
                         $team->isRefused = true;
                     }
-                    if ($casted === Team::MEMBER_PENDING) {
+                    if ($teamMember->pivot->is_pending === Team::MEMBER_PENDING) {
                         $team->isPending = true;
                     }
                 }
@@ -157,7 +151,7 @@ class TeamController extends Controller
 
         if (!$status) {
             $this->failure([
-                'message' => 'Failed to update the team',
+                'message' => __('team.failed.update'),
             ]);
         }
 
@@ -181,7 +175,7 @@ class TeamController extends Controller
         }
 
         return $this->success([
-            'message' => 'Team is updated',
+            'status' => 'success',
         ]);
     }
 
@@ -211,13 +205,13 @@ class TeamController extends Controller
 
         if (!$status) {
             $this->failure([
-                'message' => 'Failed to delete the Team',
+                'message' => __('team.failed.delete'),
             ]);
         }
 
         return $this->success([
-            'message' => 'Team is deleted',
-        ], 200);
+            'status' => 'success',
+        ]);
     }
 
     public function joinTeamRequest(string $slug)
@@ -242,8 +236,7 @@ class TeamController extends Controller
             ->first();
         if ($isExist) {
             $this->failure([
-                'status' => 'failed',
-                'message' => 'User already in the team',
+                'message' => __('team.member_exists'),
             ]);
         }
 
@@ -253,7 +246,6 @@ class TeamController extends Controller
 
         return $this->success([
             'status' => 'success',
-            'message' => 'You joined the team waiting list',
         ]);
     }
 
@@ -282,7 +274,7 @@ class TeamController extends Controller
         foreach ($team->members as $teamMember) {
             if (
                 $teamMember->slug === $pendingMemberSlug &&
-                (int) $teamMember->pivot->is_pending === Team::MEMBER_PENDING
+                $teamMember->pivot->is_pending === Team::MEMBER_PENDING
             ) {
                 $isUpdated = $team->members()->updateExistingPivot($teamMember->id, [
                     'is_pending' => Team::MEMBER_ACTIVE,
@@ -295,7 +287,7 @@ class TeamController extends Controller
         if (!$isUpdated) {
             $this->failure([
                 'status' => 'failed',
-                'message' => 'Failed to update the join request status',
+                'message' => __('team.failed.accept_join'),
             ]);
         }
 
@@ -329,7 +321,7 @@ class TeamController extends Controller
         foreach ($team->members as $teamMember) {
             if (
                 $teamMember->slug === $pendingMemberSlug &&
-                (int) $teamMember->pivot->is_pending === Team::MEMBER_PENDING
+                $teamMember->pivot->is_pending === Team::MEMBER_PENDING
             ) {
                 $isUpdated = $team->members()->updateExistingPivot($teamMember->id, [
                     'is_pending' => Team::MEMBER_REFUSED,
@@ -342,7 +334,7 @@ class TeamController extends Controller
         if (!$isUpdated) {
             $this->failure([
                 'status' => 'failed',
-                'message' => 'Failed to update the join request status',
+                'message' => __('team.failed.refuse_join'),
             ]);
         }
 
@@ -357,13 +349,10 @@ class TeamController extends Controller
         $limit = $request->query('limit') ?? 25;
 
         $team = Team::where('slug', $slug)->first();
-        $mangas = Manga::where(function (Builder $query) use ($team) {
-            $query->whereHas('chapters.teams', function (Builder $query) use ($team) {
-                $query->where('team_id', $team->id);
-            })
-                ->orWhere('team_id', '=', $team->id);
-        })
-            ->where('is_approved', '=', 1)
+        $mangas = Manga::where([
+            ['team_id', '=', $team->id],
+            ['is_approved', '=', 1]
+        ])
             ->orderBy('created_at', 'desc')
             ->paginate($limit, ['*'], 'page', $page);
 

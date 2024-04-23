@@ -51,7 +51,8 @@ class User extends Authenticatable
             ->withPivot([
                 'is_leader',
                 'is_pending',
-            ]);
+            ])
+            ->using(TeamUser::class);
     }
 
     public function roles(): BelongsToMany

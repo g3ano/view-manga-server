@@ -9,7 +9,5 @@ Route::prefix('chapters')->group(function () {
         Route::post('/', [ChapterController::class, 'store']);
     });
 
-    Route::get('/team/{slug}', [ChapterController::class, 'getTeamChapters']);
-
-    Route::get('/team/{slug}/{id}', [ChapterController::class, 'show']);
+    Route::get('/{mangaSlug}/{teamSlug}/{id}', [ChapterController::class, 'show']);
 });

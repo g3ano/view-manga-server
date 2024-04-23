@@ -20,6 +20,8 @@ class StoreChapterRequest extends BaseRequest
             'number' => [
                 'bail',
                 'required',
+                'numeric',
+                'min:0',
             ],
             'title' => [
                 'bail',

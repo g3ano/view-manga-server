@@ -31,10 +31,9 @@ class TeamResource extends JsonResource
                     ]
                 ),
                 'isLeader' => $this->when(
-                    (
-                        $this->hasPivotLoaded('team_user') &&
-                        $this->pivot?->is_leader ?: false
-                    ) || $this->isLeader ?: false,
+                    ($this->hasPivotLoaded('team_user') &&
+                        $this->pivot?->is_leader) ||
+                         $this->isLeader ?: false,
                     true,
                 ),
                 'isMember' => $this->whenNotNull(

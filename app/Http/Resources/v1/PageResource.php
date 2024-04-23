@@ -10,8 +10,7 @@ class PageResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'id' => $this->id,
-            'data' => json_decode($this->data),
+            ...json_decode($this->data, true),
         ];
     }
 }

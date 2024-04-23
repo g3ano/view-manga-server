@@ -6,16 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\v1\Chapter\StoreChapterRequest;
 use App\Http\Resources\v1\ChapterCollection;
 use App\Http\Resources\v1\ChapterResource;
+use App\Http\Resources\v1\MangaResource;
+use App\Http\Resources\v1\PageResource;
+use App\Jobs\v1\ProcessChapterPages;
 use App\Models\v1\Chapter;
 use App\Models\v1\Manga;
 use App\Models\v1\Page;
 use App\Models\v1\Team;
-use App\Models\v1\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Storage;
-use ZipArchive;
 
 class ChapterController extends Controller
 {
@@ -45,6 +45,19 @@ class ChapterController extends Controller
          * @var Manga $manga
          */
         $manga = Manga::where('id', $data['manga_id'])->first();
+        $result = DB::table('chapters')
+            ->join('chapter_team', 'chapters.id', '=', 'chapter_team.chapter_id')
+            ->where('manga_id', $manga->id)
+            ->select(DB::raw('MAX(number) as last'))
+            ->first();
+        $last = (float) $result->last;
+
+        if ($data['number'] > $last + 1) {
+            $this->failure([
+                'number' => __('chapter.number.max'),
+            ]);
+        }
+
         /**
          * @var Team $team
          */
@@ -53,18 +66,15 @@ class ChapterController extends Controller
         if (!$manga || !$team) {
             $this->failedAsNotFound('Chapter');
         }
-        /**
-         * @var User $user
-         */
-        $user = Auth::user();
 
         /**
          * @var Chapter $chapter
          */
-        $chapter = Chapter::where([
-            ['manga_id', '=', $manga->id],
-            ['number', '=', $data['number']]
-        ])->first();
+        $chapter = Chapter::with('manga')
+            ->where([
+                ['manga_id', '=', $manga->id],
+                ['number', '=', $data['number']]
+            ])->first();
 
         if (!$chapter) {
             /**
@@ -75,9 +85,10 @@ class ChapterController extends Controller
                 'number' => $data['number'],
                 'title' => $data['title'],
             ]);
+
             if (!$chapter) {
                 $this->failure([
-                    'number' => 'تعذر إضافة الفصل',
+                    'number' => __('chapter.failed.create'),
                 ]);
             }
         }
@@ -85,111 +96,75 @@ class ChapterController extends Controller
         if (
             is_null($chapter->title) && !is_null($data['title'])
         ) {
-            $chapter->title($data['title']);
+            $chapter->title = $data['title'];
             $chapter->save();
         }
 
         [
             'allowed' => $allowed,
-            'message' => $message,
             'code' => $code,
         ] = Gate::inspect('create', [$chapter, $team->id])->toArray();
 
         if (!$allowed) {
             if ($code === 302) {
                 $this->failure([
-                    'number' => $message,
+                    'number' => __('chapter.unique'),
                 ]);
             }
             $this->failedAsNotFound('Chapter');
         }
 
-        $tempDir = 'temp/' . $manga->slug . '/' . $data['number'] . '/';
-        $publicDir = 'public/mangas/' . $manga->slug . '/' . $data['number'] . '/';
-        $pages = $request->file('pages');
-        $fileOriginalName = substr($pages->getClientOriginalName(), 0, strpos(
-            $pages->getClientOriginalName(),
-            '.'
-        ));
+        $tempDir = 'temp/mangas/';
+        $path = $request->file('pages')->store($tempDir, 'local');
+        $data['pages'] = $path;
 
-        $path = Storage::put(
-            $tempDir,
-            $pages,
-            'private'
-        );
-
-        $zip = new ZipArchive();
-        $isOpened = $zip->open(storage_path('app/' . $path));
-
-        if (!$isOpened) {
-            $this->failure([
-                'pages' => 'حطأ في التعامل مع الملف، يرجى المحاولة لاحقا'
-            ]);
-        }
-
-        //TODO: need a way to deal with this, by default is naming the folder
-        //at which the contents is extracted using the file original name
-        //which is unsecure
-        $isExtracted = $zip->extractTo(storage_path('app/' . $tempDir));
-        $isClosed = $zip->close();
-
-        if (!$isExtracted || !$isClosed) {
-            $this->failure([
-                'pages' => 'حطأ في التعامل مع الملف، يرجى المحاولة لاحقا'
-            ]);
-        }
-
-        $files = Storage::files($tempDir . $fileOriginalName);
-
-        $pages = [];
-        foreach ($files as $key => $fileName) {
-            $pos = strrpos($fileName, '/');
-            $path = $publicDir . substr($fileName, $pos + 1);
-            Storage::move($fileName, $path);
-            $pages[] = [
-                'id' => $key + 1,
-                'path' => Storage::url($path),
-            ];
-        }
-
-        $page = Page::create([
-            'data' => json_encode($pages),
-        ]);
-        $status = Storage::deleteDirectory($tempDir);
-
-        if (!$status || !$page) {
-            $this->failure([
-                'status' => 'Failed to add the pages to the chapter',
-            ]);
-        }
-
-        $team->chapters()->attach($chapter->id, [
-            'page_id' => $page->id,
-        ]);
+        ProcessChapterPages::dispatch($chapter, $data);
 
         return $this->success([
             'status' => 'success',
         ]);
     }
 
-    public function show(Request $request, string $slug, string $id)
+    public function show(Request $request, string $mangaSlug, string $teamSlug, string $id)
     {
+        $manga = Manga::where('slug', $mangaSlug)->first();
+        $team = Team::where('slug', $teamSlug)->first();
 
-        return [
-            'slug' => $slug,
-            'id' => $id,
-        ];
+        if (!$manga || !$team) {
+            $this->success([
+                'status' => 'failed',
+            ]);
+        }
         /**
          * @var Chapter $chapter
          */
-        $chapter = Chapter::where('id', $id)
+        $chapter = Chapter::with('teams')
+            ->where([
+                ['id', '=', $id],
+                ['manga_id', '=', $manga->id],
+            ])
             ->first();
 
         if (!$chapter) {
-            $this->failedAsNotFound('Chapter');
+            $this->success([]);
         }
 
-        return new ChapterResource($chapter);
+        $pageId = $chapter->teams()
+            ->wherePivot('team_id', $team->id)
+            ->first(['page_id'])->page_id;
+        $pages = Page::where('id', $pageId)->first();
+
+        if (!$pages) {
+            $this->success([
+                'status' => 'failed',
+            ]);
+        }
+
+        return $this->success([
+            'chapter' => new ChapterResource($chapter->unsetRelation('teams')),
+            'manga' => new MangaResource($manga),
+            'pages' => new PageResource($pages),
+        ]);
     }
 
     public function update(Request $request, string $id)
@@ -200,21 +175,5 @@ class ChapterController extends Controller
     public function destroy(string $id)
     {
         //
-    }
-
-    public function getTeamChapters(Request $request, string $slug)
-    {
-        $page = $request->query('page') ?? 1;
-        $limit = $request->query('limit') ?? 25;
-
-        /**
-         * @var Team $team
-         */
-        $team = Team::where('slug', $slug)->first();
-        $chapters = $team->chapters()->with('manga')
-            ->orderByPivot('created_at', 'desc')
-            ->paginate($limit, ['*'], 'page', $page);
-
-        return new ChapterCollection($chapters);
     }
 }
